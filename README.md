@@ -11,15 +11,27 @@ individual contributions, and references.
 ## Links
 
 - Project code: [NecoJac/cs503-compositional-diffusion](https://github.com/NecoJac/cs503-compositional-diffusion)
-- Website source: [NecoJac/cs503-compositional-diffusion-webpage](https://github.com/NecoJac/cs503-compositional-diffusion-webpage)
-- Course: EPFL CS-503 Visual Intelligence, Spring 2026
+- Website source code: [NecoJac/cs503-compositional-diffusion-webpage](https://github.com/NecoJac/cs503-compositional-diffusion-webpage)
+- Website: [cs503-compositional-diffusion-webpage](https://necojac.github.io/cs503-compositional-diffusion-webpage/)
+- Course: [EPFL CS-503 Visual Intelligence, Spring 2026](https://edu.epfl.ch/coursebook/en/visual-intelligence-CS-503)
 
-## Authors
+## Authors and Contributions
 
-- [Yunyi Chen](https://github.com/C-Yunyi)
-- [Xinran Wang](https://github.com/AmbitiousOcean)
-- [Shengze Jiang](https://github.com/NecoJac)
-- [Hantao Zhang](https://github.com/kanydao)
+- [Hantao Zhang](https://github.com/kanydao)  &mdash; developed the bridge-correction theoretical
+              formalism (DiffCollage as $R\equiv 1$ projection, identification of $\nabla\log R$),
+              adapted the FKC-PoE sampler to the SD 1.5 bridge composition setting, and led the
+              50+ configuration sweep design.
+- [Yunyi Chen](https://github.com/C-Yunyi)  &mdash; implemented the bridge-worker framework on top of
+              Stable Diffusion 1.5; managed window slicing, slerp prompt interpolation, and the
+              per-method composition rules.
+- [Shengze Jiang](https://github.com/NecoJac) &mdash; co-implemented the bridge-worker framework;
+              integrated the Tweedie corrector and DDIM scheduler; executed the 50+ configuration
+              sweep and the three-prompt panorama runs.
+- [Xinran Wang](https://github.com/AmbitiousOcean)  &mdash; designed the seam-MSE / seam-max evaluation
+              protocol, curated the prompt set, and produced the qualitative comparison grids.
+- All four authors discussed scope decisions and jointly wrote this report, the slides,
+              and this webpage.
+
 
 ## Repository Structure
 
