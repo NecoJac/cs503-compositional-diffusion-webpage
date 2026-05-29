@@ -1,39 +1,49 @@
-<p align="center">
-  <img src="assets/epfl_logo.svg" alt="description" width="200">
-</p>
-<h1 align="center">EPFL CS503 - Visual Intelligence<br>Machine and Minds <br>Course Project Website Template</h1>
+# Test-Time Compositional Control for Diffusion Models
 
-This repository contains the template code for preparing final project reports using GitHub Page. 
+This repository contains the source code for our EPFL 2026 Spring CS-503 Visual Intelligence project webpage:
 
-## Steps to Use the Template
-Follow the given steps to clone the repository to your local and publish on the website afterwards. 
+**Test-Time Compositional Control for Diffusion Models**  
+Bridge-Correction and SMC / FKC-PoE for Panoramic Text-Prompt Composition
 
-### 1 - Clone and Edit the Repository 
+The webpage summarizes the project motivation, related work, method, experiments, conclusions,
+individual contributions, and references.
+
+## Links
+
+- Project code: [NecoJac/cs503-compositional-diffusion](https://github.com/NecoJac/cs503-compositional-diffusion)
+- Website source: [NecoJac/cs503-compositional-diffusion-webpage](https://github.com/NecoJac/cs503-compositional-diffusion-webpage)
+- Course: EPFL CS-503 Visual Intelligence, Spring 2026
+
+## Authors
+
+- [Yunyi Chen](https://github.com/C-Yunyi)
+- [Xinran Wang](https://github.com/AmbitiousOcean)
+- [Shengze Jiang](https://github.com/NecoJac)
+- [Hantao Zhang](https://github.com/kanydao)
+
+## Repository Structure
+
+- `index.html` - main webpage content
+- `static/figures/slides/` - slide images used throughout the page
+- `static/slides.pdf` - project slides linked from the webpage
+- `static/css/` - Bulma, template, and page styling
+- `static/js/` - template JavaScript dependencies
+- `assets/` - static assets such as the EPFL logo
+
+## Local Preview
+
+Because this is a static webpage, it can be previewed by opening `index.html` directly in a browser.
+For a local server preview:
+
 ```bash
-git clone https://github.com/EPFL-VILAB/cs503-project-webpage-template.git
-```
-After cloning the repository, make changes in the file `index.html` to modify your website as you wish. The parts that can be edited are labeled with following blocks: 
-
-```html
-<!--TODO: CODE BLOCK DESCRIPTION-->
-
-
-<!-------------------------------->
+python -m http.server 8000
 ```
 
-The `static` folder can be used for storing images, gifs, videos and other content that can be used in the report for reporting. 
+Then open `http://localhost:8000`.
 
-After making the edits update the repository and commit your changes. 
+## Acknowledgements
 
-### 2 - Publish the Website on GitHub Pages
-The website can be published following the given steps: 
-
-1. Go to _Settings_ in of the repository and select _Pages_ under the group _Code and Automation_ from the left corner options. 
-
-2. Select the source as _Deploy from a branch_ 
-
-3. Wait for some time and you can see the first deployment following the provided link at your domain 🎉.
-
-4. Afterwards, your commits will update the website each time. 
----
-This template has been taken from [here](https://nerfies.github.io).
+This webpage is based on the
+[EPFL-VILAB CS-503 project webpage template](https://github.com/EPFL-VILAB/cs503-project-webpage-template),
+which is adapted from the
+[Nerfies website template](https://github.com/nerfies/nerfies.github.io).
