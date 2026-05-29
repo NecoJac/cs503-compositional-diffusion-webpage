@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="Test-Time Compositional Control for Diffusion Models — a training-free panoramic generation framework that compares DiffCollage, Naive PoE, Bridge Correction, and a new SMC / FKC-PoE sampler on Stable Diffusion 1.5.">
+  <meta name="keywords" content="diffusion models, compositional generation, DiffCollage, bridge variable, SMC, FKC, Feynman-Kac Correctors, Stable Diffusion, panorama, CS-503, EPFL">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test-Time Compositional Control for Diffusion Models</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="./static/images/favicon.svg">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']]
+      }
+    };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <h1 class="title is-1 publication-title">Test-Time Compositional Control for Diffusion Models</h1>
+          <h2 class="subtitle is-4" style="margin-top:0.5em;">
+            Bridge-Correction and SMC / FKC-PoE for Panoramic Text-Prompt Composition
+          </h2>
+          <div class="is-size-5 publication-authors" style="margin-top:1em;">
+            <span class="author-block">
+              <a href="https://github.com/C-Yunyi">Yunyi Chen</a>,
+            </span>
+            <span class="author-block">
+              <a href="https://github.com/AmbitiousOcean">Xinran Wang</a>,
+            </span>
+            <span class="author-block">
+              <a href="https://github.com/NecoJac">Shengze Jiang</a>,
+            </span>
+            <span class="author-block">
+              <a href="https://github.com/kanydao">Hantao Zhang</a>,
+            </span>
+          </div>
+          <div class="is-size-6 publication-authors" style="margin-top:0.5em;">
+            <span>EPFL &mdash; CS-503 Visual Intelligence &mdash; Spring 2026</span>
+          </div>
+
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <span class="link-block">
+                <a href="./static/slides.pdf"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="fas fa-file-pdf"></i></span>
+                  <span>Slides</span>
+                </a>
+              </span>
+              <span class="link-block">
+                <a href="https://github.com/kanydao/master_project"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon"><i class="fab fa-github"></i></span>
+                  <span>Project Code</span>
+                </a>
+              </span>
+              <!-- GitHub Website Link. -->
+              <span class="link-block">
+                <a href="https://github.com/NecoJac/cs503-project-webpage"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-github"></i>
+                  </span>
+                  <span>Website Code</span>
+                  </a>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TEASER: 4-method qualitative comparison from slide 5 -->
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <img src="./static/figures/slides/page05.png"
+           alt="Qualitative comparison: Naive vs DiffCollage vs Bridge Correction (Ours) vs SMC / FKC-PoE (Ours) across four prompt pairs."
+           style="width:100%; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+      <h2 class="subtitle has-text-centered" style="margin-top:1em;">
+        Four composition strategies on four left-right prompt pairs (Stable Diffusion 1.5, frozen weights).
+        Same seed, scheduler, windows; methods differ only in how the per-window noise predictions
+        are composed.
+      </h2>
+    </div>
+  </div>
+</section>
+
+<!-- =============== ABSTRACT =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            Generating a single image that satisfies <em>multiple</em> text-prompt constraints at
+            test time &mdash; a left prompt for one half, a right prompt for the other &mdash; is hard
+            for pretrained diffusion models that were trained on single prompts. Existing test-time
+            samplers like DiffCollage correct overlap double-counting via factor-graph marginal
+            subtraction, but rest on an implicit conditional-independence assumption.
+          </p>
+          <p>
+            We formalize the panoramic compositional problem with an explicit <strong>bridge variable</strong>
+            $y$ = latent overlap between adjacent windows, and introduce two training-free correctors on top
+            of frozen Stable Diffusion 1.5: <strong>Bridge Correction</strong> (a Tweedie-based overlap-mismatch
+            corrector on a single trajectory) and <strong>SMC / FKC-PoE</strong> (a Feynman&ndash;Kac
+            corrector that keeps $K$ candidate trajectories and resamples them by overlap compatibility).
+          </p>
+          <p>
+            Honest finding: tuned baselines are much stronger than the literature reports
+            (our DiffCollage reaches seam MSE $0.0175$ vs the paper's $0.0307$, $-40\%$).
+            On top of that, our SMC's real win is not lower mean but <strong>$-22\%$ per-prompt
+            variance</strong> ($0.0128$ vs $0.016$). Bridge Correction works in a narrow sweet spot
+            ($c=0.01$) and collapses when pushed harder. We see this as evidence that reproducing
+            baselines properly closes most of the headroom new methods claim, and that variance &mdash;
+            not mean &mdash; is the right axis to measure SMC-style correctors on.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Overview</h2>
+        <div class="tile is-ancestor is-centered" style="vertical-align: middle;">
+          <div class="tile is-parent"><a href="#intro" class="tile is-child box"><p class="subtitle"><font size="-1">Introduction</font></p></a></div>
+          <div class="tile is-parent"><a href="#related-work" class="tile is-child box"><p class="subtitle"><font size="-1">Related Works</font></p></a></div>
+          <div class="tile is-parent"><a href="#method" class="tile is-child box"><p class="subtitle"><font size="-1">Method</font></p></a></div>
+          <div class="tile is-parent"><a href="#experiments" class="tile is-child box"><p class="subtitle"><font size="-1">Experiments</font></p></a></div>
+          <div class="tile is-parent"><a href="#conclusion" class="tile is-child box"><p class="subtitle"><font size="-1">Conclusion</font></p></a></div>
+          <div class="tile is-parent"><a href="#limitations" class="tile is-child box"><p class="subtitle"><font size="-1">Limitations</font></p></a></div>
+          <div class="tile is-parent"><a href="#contributions" class="tile is-child box"><p class="subtitle"><font size="-1">Contributions</font></p></a></div>
+          <div class="tile is-parent"><a href="#references" class="tile is-child box"><p class="subtitle"><font size="-1">References</font></p></a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== I. INTRODUCTION =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="intro">I. Introduction</h2>
+
+        <div class="content has-text-centered">
+          <img src="./static/figures/slides/page02.png"
+               alt="Problem statement slide: long image generation with left prompt 'Fluffy white rabbit' and right prompt 'lush forest with stream'."
+               style="width:90%; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <p class="is-size-7" style="margin-top:0.5em;">
+            <em>Long-image generation under multi-constraint control. Pretrained diffusion models accept
+            one prompt per image; we ask the model to satisfy two prompts on the two halves of one
+            panorama and produce a coherent transition between them &mdash; <strong>without retraining</strong>.</em>
+          </p>
+        </div>
+
+        <div class="content has-text-justified" style="margin-top:1.5em;">
+          <p>
+            Real applications of text-to-image diffusion increasingly ask for several prompts at once:
+            panoramas, scene transitions, multi-region edits, story illustration. A naive solution is
+            to slide a window across the latent and run the model independently in each window, then
+            average the predictions on the overlap. This counts the shared region twice and produces
+            visible seams. DiffCollage (Zhang et&nbsp;al., 2023) corrects double-counting with an
+            overlap-marginal subtraction, but rests on an unstated $x \perp z \mid y$ assumption that
+            does not hold when the two prompts must coordinate through a transition.
+          </p>
+          <p>
+            <strong>Research question.</strong> How can we control the generated result of a frozen
+            diffusion model under multiple text constraints at <em>inference time</em>, while keeping a
+            coherent transition between them?
+          </p>
+          <p>
+            <strong>Our angle.</strong> We make the bridge variable $y$ &mdash; the latent overlap shared
+            by adjacent windows &mdash; explicit, and study two training-free correctors that operate on
+            this bridge: a single-trajectory Tweedie-based Bridge Correction, and a multi-trajectory
+            SMC / FKC-PoE sampler.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== II. RELATED WORKS =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="related-work">II. Related Works</h2>
+        <div class="content has-text-justified">
+          <p>
+            <strong>Latent diffusion and classifier-free guidance.</strong>
+            Stable Diffusion builds on latent diffusion models, which run a denoising UNet in a
+            low-dimensional latent space <a href="#ref-1">[1]</a>; classifier-free guidance steers the prediction toward a
+            text condition <a href="#ref-2">[2]</a>. We
+            inherit both ingredients unmodified.
+          </p>
+          <p>
+            <strong>Factor-graph composition &mdash; DiffCollage.</strong>
+            DiffCollage <a href="#ref-3">[3]</a> writes the joint over overlapping regions as
+            $p(x,y,z) \propto p(x,y)\,p(y,z)/p(y)$ and correct the score by subtracting an explicit
+            overlap-marginal term. This holds only under $x \perp z \mid y$. Our derivation makes the
+            residual dependence $R(x,y,z)$ explicit and shows DiffCollage is the $R\equiv 1$ projection
+            of the true joint.
+          </p>
+          <p>
+            <strong>Correction-based composition &mdash; SuperDiff and FK Correctors.</strong>
+            SuperDiff <a href="#ref-4">[4]</a> and FK Correctors <a href="#ref-5">[5]</a> reweight or
+            resample multiple particles to correct biased Product-of-Experts composition. We adapt FKC
+            to the SD 1.5 panoramic bridge setting (FKC-PoE) and use $\epsilon$-agreement on the
+            overlap as the Feynman&ndash;Kac reward.
+          </p>
+          <p>
+            <strong>Panoramic / multi-region generation.</strong>
+            MultiDiffusion <a href="#ref-6">[6]</a> and SyncDiffusion <a href="#ref-7">[7]</a> fuse window predictions by averaging or by minimizing a
+            perceptual loss across windows. Both can be cast as factor-graph composition without an
+            overlap-marginal correction; our four-method comparison gives them a single theoretical
+            umbrella.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== III. METHOD =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="method">III. Method</h2>
+
+        <h3 class="title is-4">Testbed: panoramic text-prompt bridge on SD 1.5</h3>
+        <div class="content has-text-centered">
+          <img src="./static/figures/slides/page03.png"
+               alt="Panoramic text-prompt bridge testbed. Three overlapping windows with two bridge variables y."
+               style="width:95%; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <p class="is-size-7" style="margin-top:0.5em;">
+            <em>Bridge variable $y$ = latent overlap between adjacent windows. Endpoints = left and right
+            text prompts. All methods share prompts, seed, scheduler, and window layout &mdash; they differ
+            only in how the overlap is composed.</em>
+          </p>
+        </div>
+
+        <div class="content has-text-justified" style="margin-top:1.5em;">
+          <p>
+            Let $u_t$ be the noisy latent of the full panorama at timestep $t$. We split it into $N$
+            overlapping latent windows $w_i(u_t)$ (width $64$ latent pixels, overlap $32$ or $48$
+            depending on the run). For window $i$ the prompt condition is obtained by spherical
+            interpolation $e_i = \mathrm{slerp}(e_L, e_R, \alpha_i)$ with $\alpha_i=(i-1)/(N-1)$, and
+            the per-window classifier-free-guided noise prediction is
+          </p>
+          <p>
+            $$ \epsilon_i = \epsilon_\theta(w_i, t, \emptyset) + \gamma\bigl[\epsilon_\theta(w_i, t, e_i)
+            - \epsilon_\theta(w_i, t, \emptyset)\bigr]. $$
+          </p>
+          <p>
+            The remaining question &mdash; the one all four methods answer differently &mdash; is how to
+            compose the per-window predictions into one full-latent prediction
+            $\epsilon_{\mathrm{full}}(u_t, t)$.
+          </p>
+        </div>
+
+        <h3 class="title is-4" style="margin-top:2em;">Bridge-variable decomposition (theory)</h3>
+        <div class="content has-text-justified">
+          <p>The exact joint over three overlapping regions admits</p>
+          <p>
+            $$ p(x,y,z) \;=\; \underbrace{\frac{p(x,y)\,p(y,z)}{p(y)}}_{p_{\mathrm{DC}}}
+            \cdot R(x,y,z), \qquad
+            R(x,y,z) := \frac{p(x,z \mid y)}{p(x \mid y)\,p(z \mid y)}. $$
+          </p>
+          <p>
+            $p_{\mathrm{DC}}$ is the DiffCollage marginal-subtraction term; $R$ measures the residual
+            dependence between $x$ and $z$ once the bridge $y$ is fixed. DiffCollage assumes $R\equiv 1$.
+            In score form, the corrected composition is
+          </p>
+          <p>
+            $$ s_{\mathrm{bridge}} \;=\; s_{xy} \oplus s_{yz} \;-\; s_{y,\,\mathrm{implicit}}
+            \;+\; \nabla \log R(x,y,z). $$
+          </p>
+          <p>
+            The first two terms reproduce DiffCollage; the last term is the missing $R\neq 1$ correction.
+            Our two methods give two different proxies for that correction.
+          </p>
+        </div>
+
+        <h3 class="title is-4" style="margin-top:2em;">Four composition strategies</h3>
+
+        <div class="columns is-multiline">
+          <div class="column is-6">
+            <div class="box" style="height:100%;">
+              <h4 class="title is-5">Naive PoE <span class="tag is-light">baseline</span></h4>
+              <p>Direct merge:
+                $\epsilon_{\mathrm{naive}} = \mathrm{Merge}(\epsilon_1, \dots, \epsilon_N).$</p>
+              <p class="is-size-7"><em>Equivalent to multiplying pairwise factors
+              $p(x,y)\,p(y,z)$; counts the shared $y$ twice and creates seam artifacts.</em></p>
+            </div>
+          </div>
+
+          <div class="column is-6">
+            <div class="box" style="height:100%;">
+              <h4 class="title is-5">DiffCollage <span class="tag is-light">baseline</span></h4>
+              <p>Subtract an implicit overlap-marginal score:
+                $\epsilon_{\mathrm{dc}} = \mathrm{Merge}(\epsilon_i;\;-\epsilon_{\mathrm{overlap},j}).$</p>
+              <p class="is-size-7"><em>Estimates $\nabla_y \log p(y) = \mathbb{E}_{x \mid y}[\nabla_y \log p(x,y)]$
+              by re-running the UNet on the overlap region with the locally interpolated prompt.</em></p>
+            </div>
+          </div>
+
+          <div class="column is-6">
+            <div class="box has-background-success-light" style="height:100%;">
+              <h4 class="title is-5">Bridge Correction <span class="tag is-success">Ours</span></h4>
+              <p>Start from DiffCollage; convert each $\epsilon_i$ to a Tweedie/DDIM estimate
+              $\hat{x}_{0,i} = (w_i - \sqrt{1-\bar{\alpha}_t}\,\epsilon_i)/\sqrt{\bar{\alpha}_t}$;
+              measure the overlap mismatch
+              $r_i = \hat{x}_{0,i}^{\mathrm{right}} - \hat{x}_{0,i+1}^{\mathrm{left}}$;
+              and inject opposing forces
+              $\Delta\epsilon_{i}^{\mathrm{right}} \mathrel{+}= \lambda_t r_i$,
+              $\Delta\epsilon_{i+1}^{\mathrm{left}} \mathrel{-}= \lambda_t r_i$
+              with $\lambda_t = c / \sqrt{\bar{\alpha}_t}$ and clipping.</p>
+              <p class="is-size-7"><em>A conservative, single-trajectory proxy for $\nabla\log R$
+              that fixes residual overlap mismatch beyond DiffCollage's marginal subtraction.</em></p>
+            </div>
+          </div>
+
+          <div class="column is-6">
+            <div class="box has-background-success-light" style="height:100%;">
+              <h4 class="title is-5">SMC / FKC-PoE <span class="tag is-success">Ours</span></h4>
+              <p>Start from Naive PoE; keep $K$ candidate trajectories
+              $\{z_t^k\}_{k=1}^{K}$; at each step reweight them by overlap compatibility
+                $$ G_t^k = \tfrac{1}{D}\sum_i \bigl\langle \epsilon_{i,R}^k(t),\,\epsilon_{i+1,L}^k(t)\bigr\rangle, \quad
+                \log w_t^k = \log w_{t+1}^k + \beta\, G_t^k, $$
+              systematic-resample the $K$ particles, and at $t=0$ return $z_0^{k^\star}$ with
+              $k^\star = \arg\max_k \log w_0^k$.</p>
+              <p class="is-size-7"><em>A Feynman&ndash;Kac corrector (Skreta et&nbsp;al., 2025) adapted to
+              SD 1.5 panoramic composition. Goes beyond local fixing and favors globally consistent bridges.</em></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="content has-text-centered" style="margin-top:1em;">
+          <img src="./static/figures/slides/page04.png"
+               alt="Side-by-side: Bridge Correction algorithm box vs SMC / FKC-PoE algorithm box."
+               style="width:95%; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <p class="is-size-7" style="margin-top:0.5em;">
+            <em>Algorithm side-by-side. Left: Bridge Correction (DiffCollage&rarr;Tweedie mismatch&rarr;symmetric correction).
+            Right: SMC / FKC-PoE (multiple trajectories&rarr;overlap-compatibility weights&rarr;systematic resampling).</em>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== IV. EXPERIMENTS =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="experiments">IV. Experiments</h2>
+
+        <h3 class="title is-4">Setup</h3>
+        <div class="content has-text-justified">
+          <p>
+            <strong>Backbone:</strong> frozen Stable Diffusion 1.5 (CLIP + UNet + VAE + DDIM, 50 steps,
+            CFG $\gamma=7.5$). <strong>Output:</strong> two-prompt panoramas at $512\times1024$;
+            three-prompt panoramas at $512\times1536$. <strong>Window width:</strong> 64 latent pixels.
+            <strong>Overlap:</strong> 32 latent pixels for baselines and Bridge Correction; 48 latent
+            pixels for SMC. <strong>SMC:</strong> $K=8$ particles, $\beta=1.0$ default
+            ($\beta=0.1$ ablation). <strong>Bridge Correction:</strong> $c=0.01$ default
+            ($c=0.05$ ablation). <strong>Prompts:</strong> hand-curated pairs spanning weather, season,
+            scene, day/night, urban and abstract transitions; reported sweeps cover 50+ configurations.
+          </p>
+        </div>
+
+        <h3 class="title is-4" style="margin-top:1.5em;">Main quantitative comparison</h3>
+        <div class="content has-text-justified">
+          <p>
+            Seam MSE is computed on narrow pixel strips around each visible window boundary &mdash; a
+            local smoothness metric. Mean, max and standard deviation are taken over the prompt-pair
+            sweep at the seed indicated.
+          </p>
+          <div class="table-container">
+            <table class="table is-bordered is-striped is-narrow is-hoverable is-fullwidth has-text-centered">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Config</th>
+                  <th>Seam MSE mean $\downarrow$</th>
+                  <th>Seam MSE max $\downarrow$</th>
+                  <th>Seam MSE std $\downarrow$</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Naive</td>
+                  <td>seed = 42</td>
+                  <td>0.0187</td>
+                  <td>0.0236</td>
+                  <td>0.0163</td>
+                </tr>
+                <tr>
+                  <td>DiffCollage</td>
+                  <td>seed = 42</td>
+                  <td><strong>0.0175</strong></td>
+                  <td><strong>0.0208</strong></td>
+                  <td>0.0158</td>
+                </tr>
+                <tr style="background-color:#e8f7e8;">
+                  <td><strong>Ours: Bridge Correction ($c=0.01$)</strong></td>
+                  <td>seed = 42</td>
+                  <td>0.0184</td>
+                  <td>0.0223</td>
+                  <td>0.0165</td>
+                </tr>
+                <tr>
+                  <td style="color:#999;">Ours: Bridge Correction ($c=0.05$, ablation)</td>
+                  <td>seed = 42</td>
+                  <td>0.0628</td>
+                  <td>0.0996</td>
+                  <td>0.0259</td>
+                </tr>
+                <tr style="background-color:#e8f7e8;">
+                  <td><strong>Ours: SMC / FKC-PoE ($K=8$, $\beta=1.0$)</strong></td>
+                  <td>seed = 17, overlap = 48</td>
+                  <td>0.0198</td>
+                  <td>0.0237</td>
+                  <td><strong>0.0128</strong></td>
+                </tr>
+                <tr>
+                  <td style="color:#999;">Ours: SMC / FKC-PoE ($K=8$, $\beta=0.1$, ablation)</td>
+                  <td>seed = 17, overlap = 48</td>
+                  <td>0.0211</td>
+                  <td>0.0257</td>
+                  <td>0.0127</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Two things to read here. (1) <strong>Mean</strong>: tuned DiffCollage is already the best
+            on the mean metric ($0.0175$); Bridge Correction matches it within noise; SMC trades a
+            little mean for a lot of variance. (2) <strong>Std</strong>: SMC reaches $0.0128$,
+            $-22\%$ vs the baselines' $\sim\!0.016$. The right axis to evaluate a particle-based
+            corrector on is variance, not mean.
+          </p>
+        </div>
+
+        <h3 class="title is-4" style="margin-top:2em;">Qualitative comparison &mdash; two-prompt panoramas</h3>
+        <div class="content has-text-centered">
+          <img src="./static/figures/slides/page05.png"
+               alt="Two-prompt panoramic results: Naive, DiffCollage, Bridge Correction (Ours), SMC (Ours) across four prompt pairs."
+               style="width:100%; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <p class="is-size-7" style="margin-top:0.5em;">
+            <em>Four prompt pairs &times; four methods. All four columns share seed and scheduler.
+            Bridge Correction sharpens the transition; SMC selects the trajectory with the most
+            compatible bridge, smoothing inconsistencies that survive a single-trajectory run.</em>
+          </p>
+        </div>
+
+        <h3 class="title is-4" style="margin-top:2em;">Qualitative comparison &mdash; three-prompt panoramas</h3>
+        <div class="content has-text-centered">
+          <img src="./static/figures/slides/page06.png"
+               alt="Three-prompt panoramic results: SMC (Ours) vs Bridge Correction (Ours)."
+               style="width:100%; border-radius:6px; box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+          <p class="is-size-7" style="margin-top:0.5em;">
+            <em>Extending to three prompts and two bridge variables ($N=3$ windows). Both correctors
+            generalize naturally; the SMC variant produces visibly more globally coherent panoramas
+            on the harder transitions.</em>
+          </p>
+        </div>
+
+        <h3 class="title is-4" style="margin-top:2em;">What we learned from the results</h3>
+        <div class="columns">
+          <div class="column">
+            <div class="box" style="height:100%;">
+              <h5 class="title is-5">1. Reproducing baselines closed the gap.</h5>
+              <p class="is-size-6">DiffCollage tuned reaches <strong>0.0175</strong> vs the paper's
+              $0.0307$ &mdash; a $-40\%$ improvement that comes from setup, not method. Most of the headroom
+              new methods can claim against an untuned baseline simply isn't there.</p>
+            </div>
+          </div>
+          <div class="column">
+            <div class="box" style="height:100%;">
+              <h5 class="title is-5">2. SMC's real win is variance, not mean.</h5>
+              <p class="is-size-6">Per-prompt std drops to <strong>0.0128</strong> vs baselines'
+              $\sim\!0.016$, a $-22\%$ reduction. SMC produces more <em>reliable</em> seams across
+              prompts even when its mean is comparable to baselines.</p>
+            </div>
+          </div>
+        </div>
+        <div class="columns">
+          <div class="column">
+            <div class="box" style="height:100%;">
+              <h5 class="title is-5">3. The SMC gain came from overlap, not reweighting.</h5>
+              <p class="is-size-6">Sweeping $K$ and $\beta$ moves the metric by less than $0.003$.
+              Going from overlap $32 \to 48$ alone gives <strong>$-35\%$</strong>.
+              $\beta \geq 10$ actually makes results worse &mdash; the $\epsilon$-agreement reward
+              saturates.</p>
+            </div>
+          </div>
+          <div class="column">
+            <div class="box" style="height:100%;">
+              <h5 class="title is-5">4. Bridge Correction has a narrow sweet spot for $c$.</h5>
+              <p class="is-size-6">$c=0.01 \Rightarrow 0.0184$; $c=0.05 \Rightarrow 0.0628$
+              (<strong>$\times 3.4$ collapse</strong>). The Tweedie corrector is useful but brittle;
+              a principled $R\neq 1$ estimator would presumably widen the safe range.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== V. CONCLUSION =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="conclusion">V. Conclusion</h2>
+        <div class="content has-text-justified">
+          <p>
+            <strong>Contributions.</strong>
+            We (1) re-derived DiffCollage as the $R\equiv 1$ projection of the true panoramic joint and
+            identified the missing $\nabla\log R$ correction term, (2) reproduced DiffCollage / Naive /
+            Bridge Correction baselines to paper-grade ($-40\%$ vs the published DiffCollage number),
+            (3) introduced a new <strong>SMC / FKC-PoE</strong> sampler for SD 1.5 panoramic
+            composition with overlap-compatibility Feynman&ndash;Kac weights, and (4) swept 50+
+            configurations to isolate where the gain actually comes from.
+          </p>
+          <p>
+            <strong>Takeaway.</strong> SMC's real win is $-22\%$ per-prompt variance, not lower mean.
+            Reproducing baselines properly closes most of the headroom new methods claim &mdash; future
+            work in this area should benchmark variance and tune baselines before claiming wins on mean.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== VI. LIMITATIONS =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="limitations">VI. Limitations</h2>
+        <div class="content has-text-justified">
+          <ul>
+            <li>
+              <strong>Seam MSE only.</strong> Our headline metric is a local smoothness measure on
+              pixel strips around the window boundary; it does not capture prompt satisfaction or
+              global perceptual quality. Adding CLIP alignment, FID/aesthetic scores, or human
+              preference is on the next milestone.
+            </li>
+            <li>
+              <strong>FK reward saturates.</strong> The $\epsilon$-agreement reward we use in
+              FKC-PoE saturates at $\beta \geq 10$ and starts hurting. A stronger semantic-space
+              reward (e.g.&nbsp;CLIP-overlap compatibility, or a learned consistency critic) is needed
+              to make SMC reach beyond variance reduction.
+            </li>
+            <li>
+              <strong>SD 1.5 only; protocol mismatch.</strong> SMC was tuned on a different
+              seed ($17$ vs $42$) and overlap ($48$ vs $32$) than the baselines; the head-to-head is
+              therefore not fully apples-to-apples on mean. SDXL / non-LDM backbones are not tested.
+            </li>
+            <li>
+              <strong>Bridge Correction is brittle.</strong> The Tweedie corrector works in a narrow
+              $c$ sweet spot and collapses by $\times 3.4$ when pushed harder. It is a heuristic proxy
+              for $\nabla\log R$, not a closed-form estimator.
+            </li>
+            <li>
+              <strong>Open question.</strong> Can SMC's variance reduction be transferred to a
+              deterministic Product-of-Experts sampler &mdash; i.e., distilled into a single
+              trajectory? That would combine SMC's reliability with Bridge Correction's lower compute.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== VII. INDIVIDUAL CONTRIBUTIONS =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="contributions">VII. Individual Contributions</h2>
+        <div class="content has-text-justified">
+          <ul>
+            <li>
+              <strong><a href="https://github.com/kanydao" target="_blank">Hantao Zhang</a></strong> &mdash; developed the bridge-correction theoretical
+              formalism (DiffCollage as $R\equiv 1$ projection, identification of $\nabla\log R$),
+              adapted the FKC-PoE sampler to the SD 1.5 bridge composition setting, and led the
+              50+ configuration sweep design.
+            </li>
+            <li>
+              <strong><a href="https://github.com/C-Yunyi" target="_blank">Yunyi Chen</a></strong> &mdash; implemented the bridge-worker framework on top of
+              Stable Diffusion 1.5; managed window slicing, slerp prompt interpolation, and the
+              per-method composition rules.
+            </li>
+            <li>
+              <strong><a href="https://github.com/NecoJac" target="_blank">Shengze Jiang</a></strong> &mdash; co-implemented the bridge-worker framework;
+              integrated the Tweedie corrector and DDIM scheduler; executed the 50+ configuration
+              sweep and the three-prompt panorama runs.
+            </li>
+            <li>
+              <strong><a href="https://github.com/AmbitiousOcean" target="_blank">Xinran Wang</a></strong> &mdash; designed the seam-MSE / seam-max evaluation
+              protocol, curated the prompt set, and produced the qualitative comparison grids.
+            </li>
+            <li>
+              All four authors discussed scope decisions and jointly wrote this report, the slides,
+              and this webpage.
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- =============== VIII. REFERENCES =============== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3" id="references">VIII. References</h2>
+        <div class="content has-text-justified">
+          <ol style="list-style-type:none; padding-left:0;">
+            <li id="ref-1">
+              [1] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, "
+              <a href="https://arxiv.org/abs/2112.10752" target="_blank">
+                High-Resolution Image Synthesis with Latent Diffusion Models
+              </a>," in <em>Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+              Recognition (CVPR)</em>, 2022.
+            </li>
+            <li id="ref-2">
+              [2] J. Ho and T. Salimans, "
+              <a href="https://arxiv.org/abs/2207.12598" target="_blank">
+                Classifier-Free Diffusion Guidance
+              </a>," <em>arXiv preprint arXiv:2207.12598</em>, 2022.
+            </li>
+            <li id="ref-3">
+              [3] Q. Zhang, J. Song, X. Huang, Y. Chen, and M.-Y. Liu, "
+              <a href="https://arxiv.org/abs/2303.17076" target="_blank">
+                DiffCollage: Parallel Generation of Large Content with Diffusion Models
+              </a>," in <em>Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+              Recognition (CVPR)</em>, 2023.
+            </li>
+            <li id="ref-4">
+              [4] M. Skreta, L. Atanackovic, A. J. Bose, A. Tong, and K. Neklyudov, "
+              <a href="https://arxiv.org/abs/2412.17762" target="_blank">
+                The Superposition of Diffusion Models Using the It&ocirc; Density Estimator
+              </a>," in <em>International Conference on Learning Representations (ICLR)</em>, 2025.
+            </li>
+            <li id="ref-5">
+              [5] M. Skreta, T. Akhound-Sadegh, V. Ohanesian, R. Bondesan, A. Aspuru-Guzik,
+              A. Doucet, R. Brekelmans, A. Tong, and K. Neklyudov,
+              "
+              <a href="https://arxiv.org/abs/2503.02819" target="_blank">
+                Feynman-Kac Correctors in Diffusion: Annealing, Guidance, and Product of Experts
+              </a>," <em>arXiv preprint arXiv:2503.02819</em>, 2025.
+            </li>
+            <li id="ref-6">
+              [6] O. Bar-Tal, L. Yariv, Y. Lipman, and T. Dekel, "
+              <a href="https://arxiv.org/abs/2302.08113" target="_blank">
+                MultiDiffusion: Fusing Diffusion Paths for Controlled Image Generation
+              </a>," in <em>Proceedings of the 40th International Conference on Machine Learning
+              (ICML)</em>, 2023.
+            </li>
+            <li id="ref-7">
+              [7] Y. Lee, K. Kim, H. Kim, and M. Sung, "
+              <a href="https://arxiv.org/abs/2306.05178" target="_blank">
+                SyncDiffusion: Coherent Montage via Synchronized Joint Diffusions
+              </a>," <em>arXiv preprint arXiv:2306.05178</em>, 2023.
+            </li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="container">
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content has-text-centered">
+          <p>
+            CS-503 Visual Intelligence &mdash; EPFL &mdash; Spring 2026
+          </p>
+          <p><em>
+            This website is based on the
+            <a href="https://github.com/EPFL-VILAB/cs503-project-webpage-template" target="_blank">EPFL-VILAB CS-503 template</a>,
+            adapted from the
+            <a href="https://github.com/nerfies/nerfies.github.io" target="_blank">Nerfies website template</a>
+            (CC BY-SA 4.0).
+          </em></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
